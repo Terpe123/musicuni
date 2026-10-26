@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小小指揮家 Maestro Lite</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 20px 0;
+    font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
+    background: radial-gradient(circle at top, #2b2d5c, #0d0e1f);
+    color: #fff; display: flex; justify-content: center; align-items: center;
+  }
+  .screen { text-align: center; width: 640px; max-width: 94vw; }
+  .hidden { display: none !important; }
+  h1 { font-size: 40px; margin: 0 0 6px; }
+  h3 { text-align: left; margin: 18px 0 8px; color: #ccd; font-size: 17px; }
+  .sub { color: #aab; margin-bottom: 10px; }
+  .hint { color: #889; font-size: 14px; margin-top: 12px; }
+
+  /* ---------- 選單 ---------- */
+  #song-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .song-card {
+    background: #24264a; border: 2px solid transparent; border-radius: 12px;
+    padding: 14px; color: #fff; cursor: pointer; text-align: left;
+    font-family: inherit; transition: .15s;
+  }
+  .song-card:hover { background: #2f3260; }
+  .song-card.selected { border-color: #ffd54f; background: #34366b; }
+  .song-title { font-size: 20px; font-weight: bold; }
+  .song-meta { font-size: 14px; color: #ccd; margin-top: 4px; }
+  .song-best { font-size: 12px; color: #99a; margin-top: 6px; }
+
+  .diff-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .diff-btn {
+    padding: 14px; border-radius: 12px; border: 3px solid transparent;
+    color: #fff; font-size: 20px; cursor: pointer; font-family: inherit; opacity: .55;
+  }
+  .diff-btn small { display: block; font-size: 13px; margin-top: 4px; }
+  .diff-btn.easy { background: #2e9e5b; }
+  .diff-btn.hard { background: #c0392b; }
+  .diff-btn.selected { opacity: 1; border-color: #fff; }
+  .opt { display: block; margin: 14px 0; color: #ccd; cursor: pointer; }
+  .start-btn {
+    width: 100%; padding: 16px; font-size: 22px; border: none; border-radius: 12px;
+    background: #ffd54f; color: #222; font-weight: bold; cursor: pointer; font-family: inherit;
+  }
+  .start-btn:hover { filter: brightness(1.1); }
+
+  /* ---------- 遊戲 ---------- */
+  #hud { display: flex; justify-content: space-between; align-items: center; font-size: 18px; margin-bottom: 8px; }
+  .tag { font-size: 13px; padding: 2px 8px; border-radius: 6px; margin-left: 8px; }
+  #dots { display: flex; justify-content: center; gap: 6px; margin: 6px 0 10px; flex-wrap: wrap; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: #444; }
+  .dot.done { background: #81c784; }
+  .dot.flawed { background: #ffb74d; }
+  .dot.current { background: #fff; box-shadow: 0 0 8px #fff; }
+  #timer-wrap { height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
+  #timer-bar { height: 100%; width: 100%; background: #444; }
+  #arrow { font-size: 150px; height: 190px; line-height: 190px; font-weight: bold; }
+  #status { font-size: 24px; min-height: 36px; }
+  #feedback { font-size: 26px; font-weight: bold; min-height: 38px; }
+  #viz { width: 100%; height: 90px; display: block; }
+  #next { color: #aab; min-height: 22px; }
+
+  .pop { animation: pop .2s ease-out; }
+  @keyframes pop { from { transform: scale(1.35); } to { transform: scale(1); } }
+  .shake { animation: shake .3s; }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-12px); }
+    75% { transform: translateX(12px); }
+  }
+
+  .pad { margin-top: 12px; display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: center; }
+  .pad button { height: 64px; font-size: 28px; border-radius: 10px; border: none; background: #444; color: #fff; cursor: pointer; }
+  .pad button.active { background: #888; }
+
+  /* ---------- 結果 ---------- */
+  #rank { font-size: 120px; font-weight: bold; color: #ffd54f; line-height: 1.2; }
+  #stats { font-size: 19px; line-height: 1.8; margin-bottom: 20px; }
+  .new { color: #ffd54f; font-weight: bold; }
+  .btn { padding: 12px 28px; font-size: 18px; margin: 6px; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<!-- ================= 選單 ================= -->
+<div id="menu" class="screen">
+  <h1>🎼 小小指揮家</h1>
+  <div class="sub">看箭頭比方向，帶領樂團完成整首古典名曲！</div>
+
+  <h3>① 選擇曲目</h3>
+  <div id="song-list"></div>
+
+  <h3>② 選擇難度</h3>
+  <div class="diff-row">
+    <button class="diff-btn easy" data-diff="easy">簡單
+      <small>沒有時間限制・比錯不扣分</small></button>
+    <button class="diff-btn hard" data-diff="hard">困難
+      <small>限時・超時或比錯都扣分・超時方向會變</small></button>
+  </div>
+  <label class="opt"><input type="checkbox" id="opt-random"> 隨機方向（每次玩都不一樣）</label>
+
+  <button class="start-btn" onclick="startGame()">開始指揮 ▶</button>
+  <div class="hint">操作：方向鍵 或 W A S D｜Enter 開始</div>
+</div>
+
+<!-- ================= 遊戲 ================= -->
+<div id="game" class="screen hidden">
+  <div id="hud">
+    <span><b id="song-name"></b><span id="diff-tag" class="tag"></span></span>
+    <span>分數 <b id="score">0</b>｜連擊 <b id="combo">0</b></span>
+  </div>
+  <div id="dots"></div>
+  <div id="timer-wrap"><div id="timer-bar"></div></div>
+  <div id="arrow"></div>
+  <div id="status"></div>
+  <div id="feedback"></div>
+  <canvas id="viz" width="640" height="90"></canvas>
+  <div id="next"></div>
+  <div class="pad">
+    <span></span><button data-dir="up">↑</button><span></span>
+    <button data-dir="left">←</button><button data-dir="down">↓</button><button data-dir="right">→</button>
+  </div>
+  <div class="hint">方向鍵 / WASD 指揮｜R 重新開始｜Esc 回選單</div>
+</div>
+
+<!-- ================= 結果 ================= -->
+<div id="result" class="screen hidden">
+  <h2>🎉 樂曲完成！</h2>
+  <div id="result-song"></div>
+  <div id="rank"></div>
+  <div id="stats"></div>
+  <button class="btn" onclick="startGame()">再玩一次</button>
+  <button class="btn" onclick="backToMenu()">回選單</button>
+</div>
+
+<script>
+// =====================================================
+// 1. 曲目資料（想加歌，照格式多寫一首）
+//    melody / bass 格式："音名:拍數"，沒寫拍數 = 1 拍，R = 休止符
+//    例："C4 D4:0.5 E4:2"
+// =====================================================
+const SONGS = [
+  {
+    id: 'ode', name: '歡樂頌', composer: '貝多芬 Beethoven', stars: 1, bpm: 110,
+    endChord: ['C4', 'E4', 'G4', 'C5'],
+    phrases: [
+      { dir: 'up',    melody: 'E4 E4 F4 G4 G4 F4 E4 D4',                bass: 'C3:4 G2:4' },
+      { dir: 'down',  melody: 'C4 C4 D4 E4 E4:1.5 D4:0.5 D4:2',         bass: 'C3:4 G2:4' },
+      { dir: 'left',  melody: 'E4 E4 F4 G4 G4 F4 E4 D4',                bass: 'C3:4 G2:4' },
+      { dir: 'right', melody: 'C4 C4 D4 E4 D4:1.5 C4:0.5 C4:2',         bass: 'C3:4 G2:2 C3:2' },
+      { dir: 'up',    melody: 'D4 D4 E4 C4 D4 E4:0.5 F4:0.5 E4 C4',     bass: 'G2:2 C3:2 G2:2 C3:2' },
+      { dir: 'left',  melody: 'D4 E4:0.5 F4:0.5 E4 D4 C4 D4 G3:2',      bass: 'G2:4 C3:2 G2:2' },
+      { dir: 'right', melody: 'E4 E4 F4 G4 G4 F4 E4 D4',                bass: 'C3:4 G2:4' },
+      { dir: 'down',  melody: 'C4 C4 D4 E4 D4:1.5 C4:0.5 C4:2',         bass: 'C3:4 G2:2 C3:2' },
+    ]
+  },
+  {
+    id: 'mozart', name: '弦樂小夜曲', composer: '莫札特 Mozart', stars: 2, bpm: 120,
+    endChord: ['G3', 'B3', 'D4', 'G4'],
+    phrases: [
+      { dir: 'up',    melody: 'G4 R:0.5 D4:0.5 G4 R:0.5 D4:0.5',        bass: 'G2:4' },
+      { dir: 'right', melody: 'G4:0.5 D4:0.5 G4:0.5 B4:0.5 D5:2',       bass: 'G2:4' },
+      { dir: 'down',  melody: 'C5 R:0.5 A4:0.5 C5 R:0.5 A4:0.5',        bass: 'D3:4' },
+      { dir: 'left',  melody: 'C5:0.5 A4:0.5 F#4:0.5 A4:0.5 D4:2',      bass: 'D3:4' },
+      { dir: 'up',    melody: 'G4 R:0.5 D4:0.5 G4 R:0.5 D4:0.5',        bass: 'G2:4' },
+      { dir: 'right', melody: 'G4:0.5 D4:0.5 G4:0.5 B4:0.5 D5:2',       bass: 'G2:4' },
+    ]
+  },
+  {
+    id: 'elise', name: '給愛麗絲', composer: '貝多芬 Beethoven', stars: 2, bpm: 170,
+    endChord: ['A3', 'C4', 'E4', 'A4'],
+    phrases: [
+      { dir: 'up',    melody: 'E5:0.5 D#5:0.5 E5:0.5 D#5:0.5 E5:0.5 B4:0.5 D5:0.5 C5:0.5 A4:1.5' },
+      { dir: 'left',  melody: 'C4:0.5 E4:0.5 A4:0.5 B4:1.5',            bass: 'A2:3' },
+      { dir: 'right', melody: 'E4:0.5 G#4:0.5 B4:0.5 C5:1.5',           bass: 'E3:3' },
+      { dir: 'up',    melody: 'E4:0.5 E5:0.5 D#5:0.5 E5:0.5 D#5:0.5 E5:0.5 B4:0.5 D5:0.5 C5:0.5 A4:1.5' },
+      { dir: 'left',  melody: 'C4:0.5 E4:0.5 A4:0.5 B4:1.5',            bass: 'A2:3' },
+      { dir: 'down',  melody: 'E4:0.5 C5:0.5 B4:0.5 A4:2',              bass: 'A2:3.5' },
+    ]
+  },
+  {
+    id: 'canon', name: 'D大調卡農', composer: '帕海貝爾 Pachelbel', stars: 3, bpm: 90,
+    endChord: ['D4', 'F#4', 'A4', 'D5'],
+    phrases: [
+      { dir: 'up',    melody: 'F#5 E5 D5 C#5 B4 A4 B4 C#5', bass: 'D3 A2 B2 F#2 G2 D2 G2 A2' },
+      { dir: 'down',  melody: 'D5 C#5 B4 A4 G4 F#4 G4 E4',  bass: 'D3 A2 B2 F#2 G2 D2 G2 A2' },
+      { dir: 'left',  melody: 'D4:0.5 F#4:0.5 A4:0.5 G4:0.5 F#4:0.5 D4:0.5 F#4:0.5 E4:0.5 D4:0.5 B3:0.5 D4:0.5 A4:0.5 G4:0.5 B4:0.5 A4:0.5 G4:0.5',
+        bass: 'D3 A2 B2 F#2 G2 D2 G2 A2' },
+      { dir: 'right', melody: 'D4:0.5 F#4:0.5 A4:0.5 G4:0.5 F#4:0.5 D4:0.5 F#4:0.5 E4:0.5 D4:0.5 B3:0.5 D4:0.5 A4:0.5 G4:0.5 B4:0.5 A4:0.5 G4:0.5',
+        bass: 'D3 A2 B2 F#2 G2 D2 G2 A2' },
+      { dir: 'up',    melody: 'F#5 E5 D5 C#5 B4 A4 B4 C#5', bass: 'D3 A2 B2 F#2 G2 D2 G2 A2' },
+      { dir: 'left',  melody: 'D5 C#5 B4 A4 G4 F#4 G4 E4',  bass: 'D3 A2 B2 F#2 G2 D2 G2 A2' },
+      { dir: 'down',  melody: 'D5:4',                        bass: 'D3:4' },
+    ]
+  }
+];
+
+// =====================================================
+// 2. 難度設定（想調難度，改這裡）
+// =====================================================
+const DIFFS = {
+  easy: {
+    label: '簡單', color: '#2e9e5b',
+    timeLimit: null,          // 沒有時間限制
+    perfectWithin: 2.0,       // 幾秒內比對算 PERFECT
+    wrongPenalty: 0,          // 比錯扣分
+    timeoutPenalty: 0,        // 超時扣分
+    changeDirOnTimeout: false,
+    showNext: true,           // 是否提示下一個方向
+    tempo: 0.9                // 速度倍率
+  },
+  hard: {
+    label: '困難', color: '#c0392b',
+    timeLimit: 2.0,
+    perfectWithin: 0.8,
+    wrongPenalty: 30,
+    timeoutPenalty: 50,
+    changeDirOnTimeout: true, // 超時後換一個方向
+    showNext: false,
+    tempo: 1.1
+  }
+};
+
+// =====================================================
+// 3. 聲音（Web Audio API 即時合成）
+// =====================================================
+let audioCtx = null;
+let activeOscs = [];
+let visualTimers = [];
+
+function noteToMidi(name) {
+  const m = name.match(/^([A-G])(#|b)?(\d)$/);
+  if (!m) throw new Error('音符格式錯誤：' + name);
+  const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]];
+  const acc = m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0;
+  return (parseInt(m[3]) + 1) * 12 + base + acc;
+}
+const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
+
+function parseNotes(str) {
+  return str.trim().split(/\s+/).map(tok => {
+    const [name, d] = tok.split(':');
+    return { name, dur: d ? parseFloat(d) : 1 };
+  });
+}
+
+function playTone(freq, start, len, type = 'triangle', vol = 0.3) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(vol, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + len);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(start);
+  osc.stop(start + len + 0.05);
+  activeOscs.push(osc);
+  osc.onended = () => { activeOscs = activeOscs.filter(o => o !== osc); };
+}
+
+// 排程一串音符，回傳長度（秒）
+function schedule(str, bpm, t0, type, vol, vizColor) {
+  const beat = 60 / bpm;
+  let t = t0;
+  for (const n of parseNotes(str)) {
+    const len = n.dur * beat;
+    if (n.name !== 'R') {
+      const midi = noteToMidi(n.name);
+      playTone(midiToFreq(midi), t, len * 0.95, type, vol);
+      if (vizColor) {
+        const delay = (t - audioCtx.currentTime) * 1000;
+        visualTimers.push(setTimeout(() => spawnParticle(midi, vizColor), delay));
+      }
+    }
+    t += len;
+  }
+  return t - t0;
+}
+
+function playPhrase(p, bpm, color) {
+  const t0 = audioCtx.currentTime + 0.05;
+  const d1 = schedule(p.melody, bpm, t0, 'triangle', 0.3, color);
+  const d2 = p.bass ? schedule(p.bass, bpm, t0, 'triangle', 0.16, null) : 0;
+  return Math.max(d1, d2);
+}
+
+function playChord(names) {
+  const t = audioCtx.currentTime + 0.05;
+  names.forEach((n, i) => playTone(midiToFreq(noteToMidi(n)), t + i * 0.06, 1.8, 'triangle', 0.18));
+}
+
+function playBuzz() {
+  playTone(110, audioCtx.currentTime, 0.25, 'sawtooth', 0.12);
+}
+
+// =====================================================
+// 4. 遊戲邏輯
+// =====================================================
+const DIRS = ['up', 'down', 'left', 'right'];
+const ARROWS = { up: '↑', down: '↓', left: '←', right: '→' };
+const DIR_NAMES = { up: '上', down: '下', left: '左', right: '右' };
+const COLORS = { up: '#4fc3f7', down: '#81c784', left: '#f06292', right: '#ffb74d' };
+const $ = id => document.getElementById(id);
+
+let selectedSong = SONGS[0].id;
+let selectedDiff = 'easy';
+let game = null;
+
+function randomOtherDir(d) {
+  const opts = DIRS.filter(x => x !== d);
+  return opts[Math.floor(Math.random() * opts.length)];
+}
+
+function showScreen(id) {
+  ['menu', 'game', 'result'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+}
+
+function startGame() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  stopEverything();
+
+  const song = SONGS.find(s => s.id === selectedSong);
+  const cfg = DIFFS[selectedDiff];
+  const randomDir = $('opt-random').checked;
+
+  // 複製一份方向（困難模式會在遊戲中改變方向，不能改到原始資料）
+  let prev = 'none';
+  const phrases = song.phrases.map(p => {
+    const dir = randomDir ? randomOtherDir(prev) : p.dir;
+    prev = dir;
+    return { ...p, dir };
+  });
+
+  game = {
+    song, cfg, diffKey: selectedDiff, phrases,
+    bpm: song.bpm * cfg.tempo,
+    idx: 0, score: 0, combo: 0, maxCombo: 0,
+    perfect: 0, good: 0, wrong: 0, timeouts: 0,
+    results: [], phraseClean: true,
+    state: 'ready', promptTime: 0, timeoutId: null, nextId: null
+  };
+
+  $('song-name').textContent = song.name;
+  $('diff-tag').textContent = cfg.label;
+  $('diff-tag').style.background = cfg.color;
+  $('timer-wrap').style.visibility = cfg.timeLimit ? 'visible' : 'hidden';
+  $('status').textContent = '準備開始…';
+  $('status').style.color = '#fff';
+  $('feedback').textContent = '';
+  $('next').textContent = '';
+  updateHud();
+  updateDots();
+  showScreen('game');
+  countdown(3);
+}
+
+function countdown(n) {
+  if (!game) return;
+  if (n === 0) return nextPrompt();
+  const arrow = $('arrow');
+  arrow.textContent = n;
+  arrow.style.color = '#fff';
+  restartAnim(arrow, 'pop');
+  playTone(n === 1 ? 1046 : 784, audioCtx.currentTime, 0.12, 'sine', 0.2);
+  game.nextId = setTimeout(() => countdown(n - 1), 700);
+}
+
+function showArrow(dir) {
+  const arrow = $('arrow');
+  arrow.textContent = ARROWS[dir];
+  arrow.style.color = COLORS[dir];
+  restartAnim(arrow, 'pop');
+  $('status').textContent = `請比「${DIR_NAMES[dir]}」`;
+  $('status').style.color = '#fff';
+}
+
+function nextPrompt() {
+  if (!game) return;
+  if (game.idx >= game.phrases.length) return endGame();
+
+  game.phraseClean = true;
+  const p = game.phrases[game.idx];
+  showArrow(p.dir);
+
+  const nxt = game.phrases[game.idx + 1];
+  if (!nxt) $('next').textContent = '最後一段！';
+  else $('next').textContent = game.cfg.showNext ? `下一個：${ARROWS[nxt.dir]}` : '';
+
+  game.state = 'waiting';
+  game.promptTime = performance.now();
+  updateDots();
+  startTimer();
+}
+
+function startTimer() {
+  clearTimeout(game.timeoutId);
+  if (game.cfg.timeLimit) {
+    game.timeoutId = setTimeout(onTimeout, game.cfg.timeLimit * 1000);
+  }
+}
+
+// 困難模式：超時 → 扣分＋換方向，但不跳過這一段
+function onTimeout() {
+  if (!game || game.state !== 'waiting') return;
+  const cfg = game.cfg;
+  const p = game.phrases[game.idx];
+
+  game.timeouts++;
+  game.combo = 0;
+  game.phraseClean = false;
+  addScore(-cfg.timeoutPenalty);
+  playBuzz();
+
+  let msg = `太慢了！ -${cfg.timeoutPenalty}`;
+  if (cfg.changeDirOnTimeout) {
+    p.dir = randomOtherDir(p.dir);
+    msg += '　方向換了！';
+  }
+  showArrow(p.dir);
+  showFeedback(msg, '#e57373');
+  updateHud();
+
+  game.promptTime = performance.now();
+  startTimer();
+}
+
+// ★ 所有輸入的唯一入口 ★
+// 現在由鍵盤／按鈕呼叫，之後換成手勢辨識，也只要呼叫 handleInput('up')
+function handleInput(dir) {
+  flashPad(dir);
+  if (!game || game.state !== 'waiting') return;
+
+  const cfg = game.cfg;
+  const p = game.phrases[game.idx];
+
+  if (dir === p.dir) {
+    clearTimeout(game.timeoutId);
+    const rt = (performance.now() - game.promptTime) / 1000;
+    if (game.phraseClean && rt <= cfg.perfectWithin) {
+      game.perfect++; addScore(100);
+      showFeedback('PERFECT!', '#ffd54f');
+    } else {
+      game.good++; addScore(50);
+      showFeedback('GOOD', '#81c784');
+    }
+    game.combo++;
+    addScore((game.combo - 1) * 10);   // 連擊加分
+    game.maxCombo = Math.max(game.maxCombo, game.combo);
+    updateHud();
+    playCurrent();
+  } else {
+    game.wrong++;
+    game.combo = 0;
+    game.phraseClean = false;
+    playBuzz();
+    restartAnim($('arrow'), 'shake');
+    if (cfg.wrongPenalty > 0) {
+      addScore(-cfg.wrongPenalty);
+      showFeedback(`方向錯了！ -${cfg.wrongPenalty}`, '#e57373');
+    } else {
+      showFeedback('方向錯了，再試一次！', '#e57373');
+    }
+    updateHud();
+  }
+}
+
+function playCurrent() {
+  game.state = 'playing';
+  const p = game.phrases[game.idx];
+  game.results[game.idx] = game.phraseClean ? 'done' : 'flawed';
+  $('status').textContent = '♪ 樂團演奏中…';
+  $('status').style.color = '#ffd54f';
+  const dur = playPhrase(p, game.bpm, COLORS[p.dir]);
+  game.idx++;
+  updateDots();
+  game.nextId = setTimeout(nextPrompt, dur * 1000);
+}
+
+function endGame() {
+  game.state = 'done';
+  playChord(game.song.endChord);
+
+  const n = game.phrases.length;
+  let maxScore = 0;
+  for (let i = 0; i < n; i++) maxScore += 100 + i * 10;
+  const ratio = game.score / maxScore;
+  const rank = ratio >= 0.95 ? 'S' : ratio >= 0.8 ? 'A' : ratio >= 0.6 ? 'B' : 'C';
+
+  const prevBest = getBest(game.song.id, game.diffKey);
+  const isNew = game.score > prevBest;
+  if (isNew) setBest(game.song.id, game.diffKey, game.score);
+
+  $('result-song').textContent = `${game.song.name}（${game.song.composer}）｜${game.cfg.label}`;
+  $('rank').textContent = rank;
+  $('stats').innerHTML =
+    `分數：${game.score} ${isNew ? '<span class="new">★ 新紀錄！</span>' : `（最佳 ${prevBest}）`}<br>` +
+    `PERFECT ${game.perfect}｜GOOD ${game.good}<br>` +
+    `比錯 ${game.wrong} 次｜超時 ${game.timeouts} 次｜最大連擊 ${game.maxCombo}`;
+  showScreen('result');
+}
+
+function backToMenu() {
+  stopEverything();
+  game = null;
+  renderMenu();
+  showScreen('menu');
+}
+
+function stopEverything() {
+  if (game) { clearTimeout(game.timeoutId); clearTimeout(game.nextId); }
+  visualTimers.forEach(clearTimeout);
+  visualTimers = [];
+  activeOscs.forEach(o => { try { o.stop(); } catch (e) {} });
+  activeOscs = [];
+}
+
+// ---------- 分數與紀錄 ----------
+function addScore(v) { game.score = Math.max(0, game.score + v); }
+
+function getBest(songId, diff) {
+  try { return parseInt(localStorage.getItem(`maestro_${songId}_${diff}`)) || 0; }
+  catch (e) { return 0; }
+}
+function setBest(songId, diff, score) {
+  try { localStorage.setItem(`maestro_${songId}_${diff}`, score); } catch (e) {}
+}
+
+// ---------- 畫面 ----------
+function renderMenu() {
+  const list = $('song-list');
+  list.innerHTML = '';
+  SONGS.forEach(s => {
+    const card = document.createElement('button');
+    card.className = 'song-card' + (s.id === selectedSong ? ' selected' : '');
+    card.innerHTML =
+      `<div class="song-title">${s.name}</div>` +
+      `<div class="song-meta">${s.composer}・${'★'.repeat(s.stars)}${'☆'.repeat(3 - s.stars)}</div>` +
+      `<div class="song-best">最佳：簡單 ${getBest(s.id, 'easy')}｜困難 ${getBest(s.id, 'hard')}</div>`;
+    card.onclick = () => { selectedSong = s.id; renderMenu(); };
+    list.appendChild(card);
+  });
+  document.querySelectorAll('.diff-btn').forEach(b =>
+    b.classList.toggle('selected', b.dataset.diff === selectedDiff));
+}
+
+function updateHud() {
+  $('score').textContent = game.score;
+  $('combo').textContent = game.combo;
+}
+
+function updateDots() {
+  const box = $('dots');
+  box.innerHTML = '';
+  game.phrases.forEach((_, i) => {
+    const d = document.createElement('span');
+    d.className = 'dot ' + (game.results[i] || '') +
+      (i === game.idx && game.state === 'waiting' ? ' current' : '');
+    box.appendChild(d);
+  });
+}
+
+function showFeedback(text, color) {
+  const fb = $('feedback');
+  fb.textContent = text;
+  fb.style.color = color;
+  restartAnim(fb, 'pop');
+}
+
+function restartAnim(el, cls) {
+  el.classList.remove('pop', 'shake');
+  void el.offsetWidth;   // 強制重繪，讓動畫重播
+  el.classList.add(cls);
+}
+
+function flashPad(dir) {
+  const btn = document.querySelector(`.pad button[data-dir="${dir}"]`);
+  if (!btn) return;
+  btn.classList.add('active');
+  setTimeout(() => btn.classList.remove('active'), 120);
+}
+
+// ---------- 音符動畫 ----------
+const viz = $('viz');
+const vctx = viz.getContext('2d');
+let particles = [];
+
+function spawnParticle(midi, color) {
+  const x = Math.min(Math.max((midi - 52) / 30, 0.05), 0.95) * viz.width;
+  particles.push({ x, y: viz.height - 8, life: 1, color });
+}
+
+function drawViz() {
+  vctx.clearRect(0, 0, viz.width, viz.height);
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.y -= 1.2;
+    p.life -= 0.012;
+    vctx.globalAlpha = Math.max(0, p.life);
+    vctx.fillStyle = p.color;
+    vctx.fillRect(p.x - 10, p.y - 6, 20, 12);
+  }
+  vctx.globalAlpha = 1;
+}
+
+// ---------- 主迴圈：倒數條＋動畫 ----------
+function loop() {
+  const bar = $('timer-bar');
+  if (game && game.state === 'waiting' && game.cfg.timeLimit) {
+    const ratio = 1 - (performance.now() - game.promptTime) / (game.cfg.timeLimit * 1000);
+    bar.style.width = Math.max(0, ratio) * 100 + '%';
+    bar.style.background = ratio > 0.3 ? '#4fc3f7' : '#e57373';
+  } else {
+    bar.style.width = '100%';
+    bar.style.background = '#444';
+  }
+  drawViz();
+  requestAnimationFrame(loop);
+}
+
+// =====================================================
+// 5. 輸入：鍵盤＋螢幕按鈕
+// =====================================================
+const KEY_MAP = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  w: 'up', s: 'down', a: 'left', d: 'right',
+  W: 'up', S: 'down', A: 'left', D: 'right'
+};
+
+document.addEventListener('keydown', e => {
+  const onMenu = !$('menu').classList.contains('hidden');
+  const onResult = !$('result').classList.contains('hidden');
+
+  const dir = KEY_MAP[e.key];
+  if (dir && !onMenu) {
+    e.preventDefault();
+    if (!e.repeat) handleInput(dir);
+    return;
+  }
+  if (e.key === 'Escape') backToMenu();
+  if (e.key === 'Enter' && (onMenu || onResult)) startGame();
+  if ((e.key === 'r' || e.key === 'R') && !onMenu) startGame();
+});
+
+document.querySelectorAll('.pad button').forEach(btn =>
+  btn.addEventListener('click', () => handleInput(btn.dataset.dir)));
+
+document.querySelectorAll('.diff-btn').forEach(btn =>
+  btn.addEventListener('click', () => { selectedDiff = btn.dataset.diff; renderMenu(); }));
+
+renderMenu();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
